@@ -102,7 +102,7 @@ export class KnowledgeIngestService {
   }
 
   async ingestDemoCorpus(workspaceId: string): Promise<number> {
-    const root = path.resolve(process.cwd(), '..', 'docs', 'knowledge', 'demo-policies');
+    const root = path.resolve(process.cwd(), 'knowledge-policies');
     const files = [
       {
         file: 'paydemo-fees-v1.md',

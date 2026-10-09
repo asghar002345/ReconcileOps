@@ -30,7 +30,8 @@ const DEMO_FILES = [
 
 function demoPoliciesDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(here, '../../../docs/knowledge/demo-policies');
+  // Bundled under backend/ so Railway rootDir=backend deploys include demo policies.
+  return path.resolve(here, '../../knowledge-policies');
 }
 
 export async function seedKnowledgeCorpus(
