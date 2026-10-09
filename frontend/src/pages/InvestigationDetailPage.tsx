@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   ApiError,
@@ -12,17 +12,23 @@ import {
 import type { ExplainResult, InvestigationDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
 export function InvestigationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
+  const noteErrorId = useId();
+  const summaryErrorId = useId();
   const [detail, setDetail] = useState<InvestigationDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [summary, setSummary] = useState('');
   const [decisionNote, setDecisionNote] = useState('');
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [explanation, setExplanation] = useState<ExplainResult | null>(null);
@@ -31,10 +37,17 @@ export function InvestigationDetailPage() {
     if (!token || !id) return;
     setLoading(true);
     setError(null);
+    setNotFound(false);
     try {
       setDetail(await fetchInvestigation(token, id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load');
+      if (err instanceof ApiError && err.status === 401) return;
+      if (err instanceof ApiError && err.status === 404) {
+        setDetail(null);
+        setNotFound(true);
+      } else {
+        setError(userFacingError(err, 'Failed to load investigation'));
+      }
     } finally {
       setLoading(false);
     }
@@ -48,11 +61,10 @@ export function InvestigationDetailPage() {
     action: () => Promise<InvestigationDetail>,
     clearField?: 'note' | 'summary' | 'decisionNote',
   ): Promise<void> {
-    if (!token) return;
+    if (!token || busy) return;
     setBusy(true);
     setError(null);
     try {
-      // Mutate responses omit audit — keep current audit until GET returns.
       const next = await action();
       setDetail((prev) => ({ ...next, audit: prev?.audit ?? [] }));
       if (clearField === 'note') setNote('');
@@ -62,7 +74,8 @@ export function InvestigationDetailPage() {
       const full = await fetchInvestigation(token, next.id);
       setDetail(full);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Action failed');
+      if (err instanceof ApiError && err.status === 401) return;
+      setError(userFacingError(err, 'Action failed'));
       if (err instanceof ApiError && err.status === 409) {
         await load();
       }
@@ -73,26 +86,36 @@ export function InvestigationDetailPage() {
 
   function onAddNote(event: FormEvent) {
     event.preventDefault();
-    if (!token || !detail || !note.trim()) return;
+    if (!token || !detail) return;
+    const trimmed = note.trim();
+    if (!trimmed) {
+      setNoteError('Note cannot be empty or whitespace only.');
+      return;
+    }
+    setNoteError(null);
     void runMutate(
-      () =>
-        addInvestigationNote(token, detail.id, note.trim(), detail.version),
+      () => addInvestigationNote(token, detail.id, trimmed, detail.version),
       'note',
     );
   }
 
   function onPropose(event: FormEvent) {
     event.preventDefault();
-    if (!token || !detail || !summary.trim()) return;
+    if (!token || !detail) return;
+    const trimmed = summary.trim();
+    if (!trimmed) {
+      setSummaryError('Proposal summary cannot be empty or whitespace only.');
+      return;
+    }
+    setSummaryError(null);
     void runMutate(
-      () =>
-        proposeResolution(token, detail.id, summary.trim(), detail.version),
+      () => proposeResolution(token, detail.id, trimmed, detail.version),
       'summary',
     );
   }
 
   function onDecide(decision: 'APPROVED' | 'REJECTED') {
-    if (!token || !detail) return;
+    if (!token || !detail || busy) return;
     const pending = detail.proposals.find((p) => p.status === 'PENDING');
     if (!pending) return;
     void runMutate(
@@ -119,13 +142,14 @@ export function InvestigationDetailPage() {
     detail.status !== 'PENDING_APPROVAL';
 
   async function onExplain() {
-    if (!token || !detail) return;
+    if (!token || !detail || explaining) return;
     setExplaining(true);
     setError(null);
     try {
       setExplanation(await explainInvestigation(token, detail.id));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Explain failed');
+      if (err instanceof ApiError && err.status === 401) return;
+      setError(userFacingError(err, 'Explain failed'));
     } finally {
       setExplaining(false);
     }
@@ -147,6 +171,7 @@ export function InvestigationDetailPage() {
               className="action action--ghost"
               disabled={explaining}
               onClick={() => void onExplain()}
+              aria-busy={explaining || undefined}
             >
               {explaining ? 'Explaining…' : 'Explain discrepancy'}
             </button>
@@ -158,11 +183,18 @@ export function InvestigationDetailPage() {
       </header>
 
       {loading ? <StatusBanner tone="info" title="Loading…" /> : null}
+      {notFound ? (
+        <StatusBanner tone="warning" title="Investigation not found">
+          <Link className="action action--ghost" to="/investigations">
+            Back to list
+          </Link>
+        </StatusBanner>
+      ) : null}
       {error ? <StatusBanner tone="danger" title={error} /> : null}
 
       {detail ? (
         <>
-          <section className="metric-row">
+          <section className="metric-row metric-row--pair">
             <div className="metric">
               <p className="metric__label">Outcome (unchanged)</p>
               <p className="metric__value">{detail.discrepancy.outcome}</p>
@@ -180,7 +212,7 @@ export function InvestigationDetailPage() {
           <p className="page__note">{detail.discrepancy.reason}</p>
 
           {explanation ? (
-            <section className="page__stack">
+            <section className="page__stack" aria-label="Explanation">
               <h2>Explanation</h2>
               <p className="page__meta">
                 {explanation.promptVersion} · {explanation.modelVersion} ·{' '}
@@ -230,18 +262,29 @@ export function InvestigationDetailPage() {
               </ul>
             )}
             {isAnalyst && detail.status !== 'RESOLVED' ? (
-              <form className="stack-form" onSubmit={onAddNote}>
-                <label>
+              <form className="stack-form" onSubmit={onAddNote} noValidate>
+                <label htmlFor="investigation-note">
                   Add note
                   <textarea
+                    id="investigation-note"
                     value={note}
-                    onChange={(e) => setNote(e.target.value)}
+                    onChange={(e) => {
+                      setNote(e.target.value);
+                      if (noteError) setNoteError(null);
+                    }}
                     rows={3}
                     required
+                    aria-invalid={noteError ? true : undefined}
+                    aria-describedby={noteError ? noteErrorId : undefined}
                   />
                 </label>
+                {noteError ? (
+                  <p id={noteErrorId} className="field-error" role="alert">
+                    {noteError}
+                  </p>
+                ) : null}
                 <button type="submit" className="action" disabled={busy}>
-                  Save note
+                  {busy ? 'Saving…' : 'Save note'}
                 </button>
               </form>
             ) : null}
@@ -272,27 +315,39 @@ export function InvestigationDetailPage() {
             )}
 
             {canPropose ? (
-              <form className="stack-form" onSubmit={onPropose}>
-                <label>
+              <form className="stack-form" onSubmit={onPropose} noValidate>
+                <label htmlFor="investigation-proposal">
                   Propose resolution
                   <textarea
+                    id="investigation-proposal"
                     value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
+                    onChange={(e) => {
+                      setSummary(e.target.value);
+                      if (summaryError) setSummaryError(null);
+                    }}
                     rows={3}
                     required
+                    aria-invalid={summaryError ? true : undefined}
+                    aria-describedby={summaryError ? summaryErrorId : undefined}
                   />
                 </label>
+                {summaryError ? (
+                  <p id={summaryErrorId} className="field-error" role="alert">
+                    {summaryError}
+                  </p>
+                ) : null}
                 <button type="submit" className="action" disabled={busy}>
-                  Submit for approval
+                  {busy ? 'Submitting…' : 'Submit for approval'}
                 </button>
               </form>
             ) : null}
 
             {isApprover && pending ? (
               <div className="stack-form">
-                <label>
+                <label htmlFor="approver-note">
                   Approver note (optional)
                   <textarea
+                    id="approver-note"
                     value={decisionNote}
                     onChange={(e) => setDecisionNote(e.target.value)}
                     rows={2}

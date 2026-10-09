@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ApiError,
@@ -9,6 +9,7 @@ import {
 import type { ReconciliationRunView } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
 export function OverviewPage() {
@@ -20,46 +21,59 @@ export function OverviewPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function load() {
-      setLoading(true);
+      if (hasLoadedRef.current) setRefreshing(true);
+      else setLoading(true);
       setError(null);
       try {
-        const page = await listPayments(token!, 1, 5);
-        if (cancelled) return;
+        const page = await listPayments(token!, 1, 5, controller.signal);
+        if (controller.signal.aborted) return;
         setTotalPayments(page.totalItems);
         const first = page.items[0];
         if (first) {
           const net =
             BigInt(first.grossAmountFils) - BigInt(first.feeAmountFils);
           setSampleNet(filsToAed(net.toString()));
+        } else {
+          setSampleNet(null);
         }
         try {
-          const run = await fetchLatestReconciliation(token!);
-          if (!cancelled) setLatestRun(run);
+          const run = await fetchLatestReconciliation(
+            token!,
+            controller.signal,
+          );
+          if (!controller.signal.aborted) setLatestRun(run);
         } catch (err) {
           if (err instanceof ApiError && err.status === 404) {
-            if (!cancelled) setLatestRun(null);
+            if (!controller.signal.aborted) setLatestRun(null);
           } else {
             throw err;
           }
         }
+        hasLoadedRef.current = true;
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : 'Failed to load');
-        }
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof ApiError && err.status === 401) return;
+        setError(userFacingError(err, 'Failed to load overview'));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     }
 
     void load();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [token]);
 
@@ -71,8 +85,10 @@ export function OverviewPage() {
       latestRun.summary.OUTSIDE_SETTLEMENT_WINDOW
     : null;
 
+  const showMetrics = totalPayments !== null || (!loading && !error);
+
   return (
-    <div className="page">
+    <div className={`page${refreshing ? ' page--refreshing' : ''}`}>
       <header className="page__header">
         <div>
           <p className="page__eyebrow">Workspace {user?.workspaceId}</p>
@@ -80,11 +96,13 @@ export function OverviewPage() {
         </div>
       </header>
 
-      {loading ? <StatusBanner tone="info" title="Loading workspace totals…" /> : null}
+      {loading && totalPayments === null ? (
+        <StatusBanner tone="info" title="Loading workspace totals…" />
+      ) : null}
       {error ? <StatusBanner tone="danger" title={error} /> : null}
 
-      {!loading && !error ? (
-        <section className="metric-row">
+      {showMetrics && !error ? (
+        <section className="metric-row" aria-busy={refreshing || undefined}>
           <div className="metric">
             <p className="metric__label">Payments in workspace</p>
             <p className="metric__value tabular">{totalPayments ?? 0}</p>
@@ -96,7 +114,7 @@ export function OverviewPage() {
             </p>
           </div>
           <div className="metric">
-            <p className="metric__label">Sample expected net (first row)</p>
+            <p className="metric__label">Most recent payment net</p>
             <p className="metric__value tabular">
               {sampleNet ? `AED ${sampleNet}` : '—'}
             </p>
@@ -105,18 +123,19 @@ export function OverviewPage() {
       ) : null}
 
       <section className="page__stack">
-        {!latestRun ? (
+        {!loading && !latestRun && !error ? (
           <StatusBanner tone="warning" title="No reconciliation run yet">
-            Run the matcher to classify MATCHED, mismatches, and unmatched
-            references.
+            Import payments and bank entries, then run reconciliation to classify
+            matched and unmatched references.
           </StatusBanner>
-        ) : (
-          <StatusBanner tone="success" title="Latest reconciliation loaded">
-            Rule {latestRun.ruleVersion}: {latestRun.summary.MATCHED} matched,{' '}
+        ) : null}
+        {latestRun ? (
+          <StatusBanner tone="success" title="Latest reconciliation is ready">
+            {latestRun.summary.MATCHED} matched,{' '}
             {latestRun.summary.AMOUNT_MISMATCH} amount mismatches,{' '}
             {latestRun.summary.AMBIGUOUS} ambiguous.
           </StatusBanner>
-        )}
+        ) : null}
         <div className="action-row">
           <Link className="action" to="/reconciliation">
             Open reconciliation

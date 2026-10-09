@@ -1,47 +1,69 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ApiError, filsToAed, listPayments } from '../api/client';
 import type { PaymentPage } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
+
+function pageFromSearch(params: URLSearchParams): number {
+  const raw = Number(params.get('page') ?? '1');
+  return Number.isInteger(raw) && raw >= 1 ? raw : 1;
+}
 
 export function PaymentsPage() {
   const { token } = useAuth();
-  const [page, setPage] = useState(1);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = pageFromSearch(searchParams);
   const [data, setData] = useState<PaymentPage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function load() {
-      setLoading(true);
+      if (hasLoadedRef.current) setRefreshing(true);
+      else setLoading(true);
       setError(null);
       try {
-        const result = await listPayments(token!, page, 10);
-        if (!cancelled) setData(result);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : 'Failed to load');
+        const result = await listPayments(token!, page, 10, controller.signal);
+        if (!controller.signal.aborted) {
+          setData(result);
+          hasLoadedRef.current = true;
         }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (err instanceof ApiError && err.status === 401) return;
+        setError(userFacingError(err, 'Failed to load payments'));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     }
 
     void load();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [token, page]);
 
+  function goToPage(next: number) {
+    setSearchParams(next <= 1 ? {} : { page: String(next) }, { replace: false });
+  }
+
   return (
-    <div className="page">
+    <div className={`page${refreshing ? ' page--refreshing' : ''}`}>
       <header className="page__header">
         <div>
-          <p className="page__eyebrow">Canonical records</p>
+          <p className="page__eyebrow">Workspace ledger</p>
           <h1>Payments</h1>
         </div>
         {data ? (
@@ -52,7 +74,9 @@ export function PaymentsPage() {
         ) : null}
       </header>
 
-      {loading ? <StatusBanner tone="info" title="Loading payments…" /> : null}
+      {loading && !data ? (
+        <StatusBanner tone="info" title="Loading payments…" />
+      ) : null}
       {error ? <StatusBanner tone="danger" title={error} /> : null}
 
       {!loading && data && data.items.length === 0 ? (
@@ -62,16 +86,25 @@ export function PaymentsPage() {
       ) : null}
 
       {data && data.items.length > 0 ? (
-        <div className="table-wrap">
+        <div className="table-wrap" aria-busy={refreshing || undefined}>
           <table className="data-table">
+            <caption className="sr-only">
+              Workspace payments, page {data.page}
+            </caption>
             <thead>
               <tr>
-                <th>Source id</th>
-                <th>Reference</th>
-                <th className="num">Gross</th>
-                <th className="num">Fee</th>
-                <th className="num">Net</th>
-                <th>Paid at (UTC)</th>
+                <th scope="col">Source id</th>
+                <th scope="col">Reference</th>
+                <th scope="col" className="num">
+                  Gross
+                </th>
+                <th scope="col" className="num">
+                  Fee
+                </th>
+                <th scope="col" className="num">
+                  Net
+                </th>
+                <th scope="col">Paid at (UTC)</th>
               </tr>
             </thead>
             <tbody>
@@ -104,18 +137,21 @@ export function PaymentsPage() {
         <div className="pager">
           <button
             type="button"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading || refreshing}
+            onClick={() => goToPage(Math.max(1, page - 1))}
           >
             Previous
           </button>
           <button
             type="button"
-            disabled={page >= data.totalPages || loading}
-            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= data.totalPages || loading || refreshing}
+            onClick={() => goToPage(page + 1)}
           >
             Next
           </button>
+          <span className="pager__status tabular" aria-live="polite">
+            Page {page} of {data.totalPages}
+          </span>
         </div>
       ) : null}
     </div>

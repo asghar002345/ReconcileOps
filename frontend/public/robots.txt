@@ -1,0 +1,4 @@
+# Indexing preference for this private demo app — not access control.
+# Authenticated API data remains protected by backend authz.
+User-agent: *
+Disallow: /

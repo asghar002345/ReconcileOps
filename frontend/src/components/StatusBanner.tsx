@@ -8,8 +8,13 @@ type Props = {
 };
 
 export function StatusBanner({ tone, title, children }: Props) {
+  const isAlert = tone === 'danger' || tone === 'warning';
   return (
-    <div className={`banner banner--${tone}`} role="status">
+    <div
+      className={`banner banner--${tone}`}
+      role={isAlert ? 'alert' : 'status'}
+      aria-live={isAlert ? 'assertive' : 'polite'}
+    >
       <strong>{title}</strong>
       {children ? <div className="banner__body">{children}</div> : null}
     </div>
