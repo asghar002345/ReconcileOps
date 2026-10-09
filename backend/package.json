@@ -17,7 +17,7 @@
     "start:worker": "tsx src/worker.main.ts",
     "start:worker:dev": "tsx watch src/worker.main.ts",
     "start:worker:prod": "node dist/worker.main.js",
-    "render:build": "prisma generate && nest build",
+    "render:build": "prisma generate && rm -f tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
     "render:start": "prisma migrate deploy && prisma db seed && node dist/main.js",
     "render:worker": "node dist/worker.main.js",
     "lint": "oxlint src/ test/",
