@@ -34,7 +34,7 @@
     "perf:bench": "tsx scripts/perf/benchmark.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.22.3"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
