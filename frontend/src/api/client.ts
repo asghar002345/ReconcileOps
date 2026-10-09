@@ -12,6 +12,16 @@ import type {
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:3000';
 
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/** Register a handler invoked once per 401 response (clear session / redirect). */
+export function setUnauthorizedHandler(
+  handler: UnauthorizedHandler | null,
+): void {
+  unauthorizedHandler = handler;
+}
+
 export class ApiError extends Error {
   status: number;
   body: ApiErrorBody;
@@ -35,7 +45,7 @@ async function parseJson(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    return { message: text };
+    return { message: text.slice(0, 200) };
   }
 }
 
@@ -52,13 +62,26 @@ async function request<T>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw err;
+    }
+    throw new ApiError(0, {
+      message: 'Network error. Check your connection and try again.',
+    });
+  }
 
   const body = (await parseJson(response)) as ApiErrorBody;
   if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
     throw new ApiError(response.status, body);
   }
   return body as T;
@@ -71,36 +94,42 @@ export function login(email: string, password: string): Promise<LoginResult> {
   });
 }
 
-export function fetchMe(token: string): Promise<LoginResult['user']> {
-  return request('/auth/me', {}, token);
+export function fetchMe(token: string, signal?: AbortSignal): Promise<LoginResult['user']> {
+  return request('/auth/me', { signal }, token);
 }
 
 export function listPayments(
   token: string,
   page = 1,
   pageSize = 20,
+  signal?: AbortSignal,
 ): Promise<PaymentPage> {
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
-  return request(`/payments?${query}`, {}, token);
+  return request(`/payments?${query}`, { signal }, token);
 }
 
 export function fetchOperation(
   token: string,
   operationId: string,
+  signal?: AbortSignal,
 ): Promise<AsyncOperationView> {
-  return request(`/operations/${operationId}`, {}, token);
+  return request(`/operations/${operationId}`, { signal }, token);
 }
 
 async function waitForOperation(
   token: string,
   operationId: string,
+  signal?: AbortSignal,
 ): Promise<AsyncOperationView> {
   const started = Date.now();
   while (Date.now() - started < 30000) {
-    const operation = await fetchOperation(token, operationId);
+    if (signal?.aborted) {
+      throw new ApiError(499, { message: 'Operation cancelled' });
+    }
+    const operation = await fetchOperation(token, operationId, signal);
     if (operation.status === 'succeeded' || operation.status === 'failed') {
       return operation;
     }
@@ -109,27 +138,51 @@ async function waitForOperation(
   throw new ApiError(408, { message: 'Operation timed out' });
 }
 
+export type ImportPhase = 'uploading' | 'processing';
+
 export async function importCsv(
   token: string,
   kind: 'payments' | 'bank-entries',
   file: File,
+  options?: {
+    signal?: AbortSignal;
+    onPhase?: (phase: ImportPhase) => void;
+  },
 ): Promise<ImportBatchSummary> {
+  const signal = options?.signal;
+  const onPhase = options?.onPhase;
   const form = new FormData();
   form.append('file', file);
-  const response = await fetch(`${API_URL}/imports/${kind}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
+  onPhase?.('uploading');
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/imports/${kind}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw err;
+    }
+    throw new ApiError(0, {
+      message: 'Network error. Check your connection and try again.',
+    });
+  }
   const body = (await parseJson(response)) as ApiErrorBody;
   if (!response.ok) {
+    if (response.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
     throw new ApiError(response.status, body);
   }
   if (response.status === 200) {
     return body as unknown as ImportBatchSummary;
   }
+  onPhase?.('processing');
   const queued = body as unknown as AsyncOperationView;
-  const done = await waitForOperation(token, queued.id);
+  const done = await waitForOperation(token, queued.id, signal);
   if (done.status === 'failed') {
     throw new ApiError(400, {
       message: done.errorMessage ?? 'Import failed',
@@ -149,13 +202,14 @@ export function filsToAed(fils: string): string {
 
 export async function runReconciliation(
   token: string,
+  signal?: AbortSignal,
 ): Promise<ReconciliationRunView> {
   const queued = await request<AsyncOperationView>(
     '/reconciliation/runs',
-    { method: 'POST' },
+    { method: 'POST', signal },
     token,
   );
-  const done = await waitForOperation(token, queued.id);
+  const done = await waitForOperation(token, queued.id, signal);
   if (done.status === 'failed') {
     throw new ApiError(400, {
       message: done.errorMessage ?? 'Reconciliation failed',
@@ -165,26 +219,29 @@ export async function runReconciliation(
   if (!runId) {
     throw new ApiError(500, { message: 'Operation succeeded without runId' });
   }
-  return request(`/reconciliation/runs/${runId}`, {}, token);
+  return request(`/reconciliation/runs/${runId}`, { signal }, token);
 }
 
 export function fetchLatestReconciliation(
   token: string,
+  signal?: AbortSignal,
 ): Promise<ReconciliationRunView> {
-  return request('/reconciliation/runs/latest', {}, token);
+  return request('/reconciliation/runs/latest', { signal }, token);
 }
 
 export function listInvestigations(
   token: string,
+  signal?: AbortSignal,
 ): Promise<InvestigationListItem[]> {
-  return request('/investigations', {}, token);
+  return request('/investigations', { signal }, token);
 }
 
 export function fetchInvestigation(
   token: string,
   id: string,
+  signal?: AbortSignal,
 ): Promise<InvestigationDetail> {
-  return request(`/investigations/${id}`, {}, token);
+  return request(`/investigations/${id}`, { signal }, token);
 }
 
 export function createInvestigation(

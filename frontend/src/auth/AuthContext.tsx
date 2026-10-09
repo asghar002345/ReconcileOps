@@ -7,10 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { fetchMe, login as apiLogin } from '../api/client';
+import { fetchMe, login as apiLogin, setUnauthorizedHandler } from '../api/client';
 import type { AuthenticatedUser } from '../api/types';
-
-const TOKEN_KEY = 'reconcileops.accessToken';
+import {
+  clearAccessToken,
+  readAccessToken,
+  writeAccessToken,
+} from '../lib/tokenStorage';
 
 type AuthContextValue = {
   token: string | null;
@@ -23,11 +26,24 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_KEY),
-  );
+  const [token, setToken] = useState<string | null>(() => readAccessToken());
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const logout = useCallback(() => {
+    clearAccessToken();
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearAccessToken();
+      setToken(null);
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await fetchMe(token);
         if (!cancelled) setUser(me);
       } catch {
-        localStorage.removeItem(TOKEN_KEY);
+        clearAccessToken();
         if (!cancelled) {
           setToken(null);
           setUser(null);
@@ -60,15 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await apiLogin(email, password);
-    localStorage.setItem(TOKEN_KEY, result.accessToken);
+    writeAccessToken(result.accessToken);
     setToken(result.accessToken);
     setUser(result.user);
-  }, []);
-
-  const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    setToken(null);
-    setUser(null);
   }, []);
 
   const value = useMemo(

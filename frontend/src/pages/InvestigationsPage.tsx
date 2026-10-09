@@ -4,6 +4,7 @@ import { ApiError, listInvestigations } from '../api/client';
 import type { InvestigationListItem } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
 export function InvestigationsPage() {
@@ -19,7 +20,8 @@ export function InvestigationsPage() {
     try {
       setRows(await listInvestigations(token));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load');
+      if (err instanceof ApiError && err.status === 401) return;
+      setError(userFacingError(err, 'Failed to load investigations'));
     } finally {
       setLoading(false);
     }
@@ -33,20 +35,26 @@ export function InvestigationsPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <p className="page__eyebrow">Day 3 review</p>
+          <p className="page__eyebrow">Review</p>
           <h1>Investigations</h1>
         </div>
       </header>
 
-      <p className="page__note">
-        Open cases from reconciliation discrepancies. Approvals do not rewrite
-        payment or bank amounts. See <code>docs/investigations-learning.md</code>.
+      <p className="page__lead">
+        Cases opened from reconciliation discrepancies. Notes and approvals
+        document review decisions; they never rewrite payment or bank amounts.
       </p>
 
       {loading ? <StatusBanner tone="info" title="Loading…" /> : null}
-      {error ? <StatusBanner tone="danger" title={error} /> : null}
+      {error ? (
+        <StatusBanner tone="danger" title={error}>
+          <button type="button" className="action action--ghost" onClick={() => void load()}>
+            Retry
+          </button>
+        </StatusBanner>
+      ) : null}
 
-      {!loading && rows.length === 0 ? (
+      {!loading && rows.length === 0 && !error ? (
         <StatusBanner tone="info" title="No investigations yet">
           From Reconciliation, open a case on a non-matched result.
         </StatusBanner>
@@ -55,13 +63,14 @@ export function InvestigationsPage() {
       {rows.length > 0 ? (
         <div className="table-wrap">
           <table className="data-table">
+            <caption className="sr-only">Open investigations</caption>
             <thead>
               <tr>
-                <th>Reference</th>
-                <th>Outcome</th>
-                <th>Status</th>
-                <th>Version</th>
-                <th>Updated</th>
+                <th scope="col">Reference</th>
+                <th scope="col">Outcome</th>
+                <th scope="col">Status</th>
+                <th scope="col">Version</th>
+                <th scope="col">Updated</th>
               </tr>
             </thead>
             <tbody>

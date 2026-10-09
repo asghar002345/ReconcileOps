@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AppShell } from './components/AppShell';
 import { ImportPage } from './pages/ImportPage';
@@ -12,11 +12,18 @@ import type { ReactNode } from 'react';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) {
-    return <p className="boot">Checking session…</p>;
+    return (
+      <p className="boot" role="status" aria-live="polite">
+        Checking session…
+      </p>
+    );
   }
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+    );
   }
   return children;
 }
