@@ -1,0 +1,92 @@
+# ReconcileOps — Render Blueprint
+# Dashboard: https://dashboard.render.com/ → New → Blueprint → connect this repo
+#
+# Services:
+#   - reconcileops-api     NestJS API (web)
+#   - reconcileops-worker  BullMQ + outbox worker
+#   - reconcileops-redis   Key Value (Valkey)
+#   - reconcileops-db      PostgreSQL
+#
+# After the API URL is live, set CORS_ORIGINS to your Vercel frontend URL
+# on both api and worker (Environment → CORS_ORIGINS).
+
+databases:
+  - name: reconcileops-db
+    plan: free
+    postgresMajorVersion: "16"
+    databaseName: reconcileops
+    user: reconcileops
+
+services:
+  - type: keyvalue
+    name: reconcileops-redis
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+  - type: web
+    name: reconcileops-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci && npm run render:build
+    startCommand: npm run render:start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: reconcileops-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: reconcileops-redis
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WEBHOOK_HMAC_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: WEBHOOK_TOLERANCE_SECONDS
+        value: "300"
+      - key: CORS_ORIGINS
+        sync: false
+
+  - type: worker
+    name: reconcileops-worker
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci && npm run render:build
+    startCommand: npm run render:worker
+    envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: reconcileops-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: reconcileops-redis
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET
+        fromService:
+          name: reconcileops-api
+          type: web
+          envVarKey: JWT_SECRET
+      - key: WEBHOOK_HMAC_SECRET
+        fromService:
+          name: reconcileops-api
+          type: web
+          envVarKey: WEBHOOK_HMAC_SECRET
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: WEBHOOK_TOLERANCE_SECONDS
+        value: "300"

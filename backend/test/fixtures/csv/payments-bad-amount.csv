@@ -1,0 +1,2 @@
+payment_id,reference,gross_amount,fee_amount,currency,paid_at
+pay_bad,REF-BAD,100.999,3.00,AED,2026-10-01T10:00:00Z

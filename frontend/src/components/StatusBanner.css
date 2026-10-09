@@ -1,0 +1,36 @@
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+}
+
+.banner strong {
+  display: block;
+  margin-bottom: var(--space-2);
+}
+
+.banner__body {
+  color: var(--ink-soft);
+}
+
+.banner--info {
+  background: var(--bg-elevated);
+}
+
+.banner--success {
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--line));
+  color: var(--success);
+}
+
+.banner--danger {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  color: var(--danger);
+}
+
+.banner--warning {
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+  color: var(--warning);
+}

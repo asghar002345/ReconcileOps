@@ -1,0 +1,3 @@
+payment_id,reference,gross_amount,fee_amount,currency,paid_at
+pay_imp_01,REF-IMP-01,100.00,3.00,AED,2026-10-01T10:00:00Z
+pay_imp_02,"REF, QUOTED",50.00,1.50,AED,2026-10-01T11:00:00Z

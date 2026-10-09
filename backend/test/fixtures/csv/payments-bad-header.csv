@@ -1,0 +1,2 @@
+payment_id,reference,amount,currency,paid_at
+pay_x,REF-X,10.00,AED,2026-10-01T10:00:00Z

@@ -1,0 +1,11 @@
+[project]
+name = "reconcileops-knowledge"
+version = "0.1.0"
+description = "Week 9 policy ingest helpers for ReconcileOps"
+requires-python = ">=3.11"
+dependencies = [
+  "psycopg[binary]>=3.2",
+]
+
+[project.scripts]
+ingest-policies = "ingest_policies:main"

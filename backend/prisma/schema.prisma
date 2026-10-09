@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  analyst
+  approver
+}
+
+enum ImportKind {
+  payments
+  bank_entries
+}
+
+enum ImportBatchStatus {
+  published
+  rejected
+}
+
+enum ReconciliationOutcome {
+  MATCHED
+  AMOUNT_MISMATCH
+  PAYMENT_WITHOUT_BANK_ENTRY
+  BANK_ENTRY_WITHOUT_PAYMENT
+  AMBIGUOUS
+  OUTSIDE_SETTLEMENT_WINDOW
+}
+
+enum InvestigationStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_APPROVAL
+  RESOLVED
+  RETURNED_TO_REVIEW
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DecisionKind {
+  APPROVED
+  REJECTED
+}
+
+enum WebhookEventStatus {
+  accepted
+  processed
+  failed
+}
+
+enum AsyncOperationKind {
+  reconciliation_run
+  import_payments
+  import_bank_entries
+  webhook_payment_captured
+}
+
+enum AsyncOperationStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+enum OutboxStatus {
+  pending
+  dispatched
+}
+
+/// One fixed workspace for the sprint: ws_demo.
+model Workspace {
+  id        String   @id @db.VarChar(64)
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  memberships         Membership[]
+  importBatches       ImportBatch[]
+  payments            Payment[]
+  bankEntries         BankEntry[]
+  reconciliationRuns  ReconciliationRun[]
+  investigations      Investigation[]
+  auditEvents         AuditEvent[]
+  webhookEvents       WebhookEvent[]
+  asyncOperations     AsyncOperation[]
+  outboxEvents        OutboxEvent[]
+  knowledgeDocuments  KnowledgeDocument[]
+  aiExplanations      AiExplanation[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id           String   @id @default(cuid()) @db.VarChar(30)
+  email        String   @unique @db.VarChar(255)
+  displayName  String   @map("display_name") @db.VarChar(120)
+  /// Placeholder until Day 1 identity is wired. Not a production secret store.
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id          String         @id @default(cuid()) @db.VarChar(30)
+  workspaceId String         @map("workspace_id") @db.VarChar(64)
+  userId      String         @map("user_id") @db.VarChar(30)
+  role        MembershipRole
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, userId])
+  @@map("memberships")
+}
+
+/// Import metadata only. Row staging for Day 2 CSV publication.
+model ImportBatch {
+  id               String            @id @default(cuid()) @db.VarChar(30)
+  workspaceId      String            @map("workspace_id") @db.VarChar(64)
+  providerAccountId String           @map("provider_account_id") @db.VarChar(64)
+  kind             ImportKind
+  status           ImportBatchStatus
+  fileName         String            @map("file_name") @db.VarChar(255)
+  fileHashSha256   String            @map("file_hash_sha256") @db.VarChar(64)
+  rowCount         Int               @map("row_count")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  rows      ImportRow[]
+  payments  Payment[]
+  bankEntries BankEntry[]
+
+  @@unique([workspaceId, providerAccountId, kind, fileHashSha256])
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id           String @id @default(cuid()) @db.VarChar(30)
+  batchId      String @map("batch_id") @db.VarChar(30)
+  rowNumber    Int    @map("row_number")
+  /// Original CSV cells for this row, preserved as evidence.
+  rawPayload   Json   @map("raw_payload")
+  sourceId     String @map("source_id") @db.VarChar(120)
+
+  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, rowNumber])
+  @@map("import_rows")
+}
+
+model Payment {
+  id                  String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId         String   @map("workspace_id") @db.VarChar(64)
+  providerAccountId   String   @map("provider_account_id") @db.VarChar(64)
+  /// Provider source id from the CSV payment_id column.
+  sourcePaymentId     String   @map("source_payment_id") @db.VarChar(120)
+  referenceOriginal   String   @map("reference_original") @db.VarChar(255)
+  referenceNormalized String   @map("reference_normalized") @db.VarChar(255)
+  /// AED amounts in integer fils.
+  grossAmountFils     BigInt   @map("gross_amount_fils")
+  feeAmountFils       BigInt   @map("fee_amount_fils")
+  currency            String   @db.Char(3)
+  paidAt              DateTime @map("paid_at") @db.Timestamptz(3)
+  importBatchId       String?  @map("import_batch_id") @db.VarChar(30)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, providerAccountId, sourcePaymentId])
+  @@index([workspaceId, providerAccountId, referenceNormalized, currency])
+  @@index([workspaceId, paidAt, sourcePaymentId])
+  @@index([workspaceId, providerAccountId, currency])
+  @@map("payments")
+}
+
+model BankEntry {
+  id                  String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId         String   @map("workspace_id") @db.VarChar(64)
+  providerAccountId   String   @map("provider_account_id") @db.VarChar(64)
+  /// Provider source id from the CSV bank_entry_id column.
+  sourceBankEntryId   String   @map("source_bank_entry_id") @db.VarChar(120)
+  referenceOriginal   String   @map("reference_original") @db.VarChar(255)
+  referenceNormalized String   @map("reference_normalized") @db.VarChar(255)
+  /// AED amounts in integer fils.
+  settledAmountFils   BigInt   @map("settled_amount_fils")
+  currency            String   @db.Char(3)
+  /// Date-only settlement date from the bank export.
+  settledAt           DateTime @map("settled_at") @db.Date
+  importBatchId       String?  @map("import_batch_id") @db.VarChar(30)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, providerAccountId, sourceBankEntryId])
+  @@index([workspaceId, providerAccountId, referenceNormalized, currency])
+  @@index([workspaceId, providerAccountId, currency])
+  @@map("bank_entries")
+}
+
+/// One deterministic reconciliation pass over a workspace snapshot.
+model ReconciliationRun {
+  id                String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId       String   @map("workspace_id") @db.VarChar(64)
+  providerAccountId String   @map("provider_account_id") @db.VarChar(64)
+  /// Bump when matching rules change so old runs stay interpretable.
+  ruleVersion       String   @map("rule_version") @db.VarChar(64)
+  createdByUserId   String   @map("created_by_user_id") @db.VarChar(30)
+  resultCount       Int      @map("result_count")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  results   ReconciliationResult[]
+
+  @@index([workspaceId, createdAt])
+  @@map("reconciliation_runs")
+}
+
+model ReconciliationResult {
+  id                   String                 @id @default(cuid()) @db.VarChar(30)
+  runId                String                 @map("run_id") @db.VarChar(30)
+  outcome              ReconciliationOutcome
+  referenceNormalized  String                 @map("reference_normalized") @db.VarChar(255)
+  /// Payment row ids considered for this result (empty for bank-only outcomes).
+  paymentIds           String[]               @map("payment_ids") @db.VarChar(30)
+  /// Bank entry row ids considered for this result (empty for payment-only outcomes).
+  bankEntryIds         String[]               @map("bank_entry_ids") @db.VarChar(30)
+  expectedNetFils      BigInt?                @map("expected_net_fils")
+  actualSettledFils    BigInt?                @map("actual_settled_fils")
+  differenceFils       BigInt?                @map("difference_fils")
+  reason               String                 @db.VarChar(500)
+  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  run            ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  investigations Investigation[]
+
+  @@index([runId, outcome])
+  @@map("reconciliation_results")
+}
+
+/// Human review case opened from a discrepancy. Does not rewrite payment/bank evidence.
+model Investigation {
+  id                      String               @id @default(cuid()) @db.VarChar(30)
+  workspaceId             String               @map("workspace_id") @db.VarChar(64)
+  reconciliationResultId  String               @map("reconciliation_result_id") @db.VarChar(30)
+  status                  InvestigationStatus  @default(OPEN)
+  assignedToUserId        String?              @map("assigned_to_user_id") @db.VarChar(30)
+  createdByUserId         String               @map("created_by_user_id") @db.VarChar(30)
+  /// Optimistic concurrency token. Mutating endpoints require the expected version.
+  version                 Int                  @default(1)
+  createdAt               DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workspace            Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  reconciliationResult ReconciliationResult @relation(fields: [reconciliationResultId], references: [id], onDelete: Restrict)
+  notes                InvestigationNote[]
+  proposals            ResolutionProposal[]
+
+  @@index([workspaceId, status])
+  @@index([reconciliationResultId])
+  @@map("investigations")
+}
+
+model InvestigationNote {
+  id              String   @id @default(cuid()) @db.VarChar(30)
+  investigationId String   @map("investigation_id") @db.VarChar(30)
+  authorUserId    String   @map("author_user_id") @db.VarChar(30)
+  body            String   @db.VarChar(2000)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId, createdAt])
+  @@map("investigation_notes")
+}
+
+model ResolutionProposal {
+  id              String         @id @default(cuid()) @db.VarChar(30)
+  investigationId String         @map("investigation_id") @db.VarChar(30)
+  proposedByUserId String        @map("proposed_by_user_id") @db.VarChar(30)
+  summary         String         @db.VarChar(2000)
+  status          ProposalStatus @default(PENDING)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  investigation Investigation      @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  decision      ResolutionDecision?
+
+  @@index([investigationId, status])
+  @@map("resolution_proposals")
+}
+
+model ResolutionDecision {
+  id             String       @id @default(cuid()) @db.VarChar(30)
+  proposalId     String       @unique @map("proposal_id") @db.VarChar(30)
+  decidedByUserId String      @map("decided_by_user_id") @db.VarChar(30)
+  decision       DecisionKind
+  note           String?      @db.VarChar(2000)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  proposal ResolutionProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@map("resolution_decisions")
+}
+
+/// Inbound provider webhook delivery. Accepted on the API; domain effect applied by the worker.
+model WebhookEvent {
+  id                  String             @id @default(cuid()) @db.VarChar(30)
+  workspaceId         String             @map("workspace_id") @db.VarChar(64)
+  providerAccountId   String             @map("provider_account_id") @db.VarChar(64)
+  eventId             String             @map("event_id") @db.VarChar(120)
+  businessOperationId String             @map("business_operation_id") @db.VarChar(120)
+  eventType           String             @map("event_type") @db.VarChar(80)
+  status              WebhookEventStatus @default(accepted)
+  payloadJson         Json               @map("payload_json")
+  paymentId           String?            @map("payment_id") @db.VarChar(30)
+  /// Async operation that applies this event (outbox → BullMQ).
+  operationId         String?            @map("operation_id") @db.VarChar(30)
+  processedAt         DateTime?          @map("processed_at") @db.Timestamptz(3)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, providerAccountId, eventId])
+  @@unique([workspaceId, providerAccountId, businessOperationId])
+  @@index([status, createdAt])
+  @@map("webhook_events")
+}
+
+/// Client-visible async job (import / reconciliation). Poll via GET /operations/:id.
+model AsyncOperation {
+  id                String               @id @default(cuid()) @db.VarChar(30)
+  workspaceId       String               @map("workspace_id") @db.VarChar(64)
+  kind              AsyncOperationKind
+  status            AsyncOperationStatus @default(queued)
+  requestedByUserId String               @map("requested_by_user_id") @db.VarChar(30)
+  correlationId     String               @map("correlation_id") @db.VarChar(64)
+  resultJson        Json?                @map("result_json")
+  errorMessage      String?              @map("error_message") @db.VarChar(2000)
+  attempts          Int                  @default(0)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  startedAt         DateTime?            @map("started_at") @db.Timestamptz(3)
+  finishedAt        DateTime?            @map("finished_at") @db.Timestamptz(3)
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  outboxEvent OutboxEvent?
+
+  @@index([workspaceId, createdAt])
+  @@map("async_operations")
+}
+
+/// Durable intent to enqueue a BullMQ job. Written in the same txn as AsyncOperation.
+model OutboxEvent {
+  id               String       @id @default(cuid()) @db.VarChar(30)
+  workspaceId      String       @map("workspace_id") @db.VarChar(64)
+  operationId      String       @unique @map("operation_id") @db.VarChar(30)
+  jobName          String       @map("job_name") @db.VarChar(80)
+  payloadJson      Json         @map("payload_json")
+  status           OutboxStatus @default(pending)
+  dispatchAttempts Int          @default(0) @map("dispatch_attempts")
+  lastError        String?      @map("last_error") @db.VarChar(2000)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  dispatchedAt     DateTime?    @map("dispatched_at") @db.Timestamptz(3)
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  operation AsyncOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@map("outbox_events")
+}
+
+/// Provider policy / guidance document (Week 9). Demo policies are clearly labeled.
+model KnowledgeDocument {
+  id                String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId       String   @map("workspace_id") @db.VarChar(64)
+  providerAccountId String   @map("provider_account_id") @db.VarChar(64)
+  title             String   @db.VarChar(255)
+  version           String   @db.VarChar(64)
+  sourceUrl         String?  @map("source_url") @db.VarChar(500)
+  effectiveDate     DateTime @map("effective_date") @db.Date
+  contentHash       String   @map("content_hash") @db.VarChar(64)
+  /// Invented demo policy text — not a real provider document.
+  isDemoPolicy      Boolean  @default(true) @map("is_demo_policy")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  chunks    DocumentChunk[]
+
+  @@unique([workspaceId, providerAccountId, title, version])
+  @@map("knowledge_documents")
+}
+
+model DocumentChunk {
+  id             String                       @id @default(cuid()) @db.VarChar(30)
+  documentId     String                       @map("document_id") @db.VarChar(30)
+  workspaceId    String                       @map("workspace_id") @db.VarChar(64)
+  section        String                       @db.VarChar(255)
+  content        String                       @db.Text
+  contentHash    String                       @map("content_hash") @db.VarChar(64)
+  embeddingModel String                       @map("embedding_model") @db.VarChar(80)
+  /// pgvector column; read/write via parameterized SQL.
+  embedding      Unsupported("vector(64)")?
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, contentHash])
+  @@index([workspaceId])
+  @@map("document_chunks")
+}
+
+/// Read-only Explain discrepancy result (Week 10). Never approves or mutates evidence.
+model AiExplanation {
+  id                String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId       String   @map("workspace_id") @db.VarChar(64)
+  investigationId   String   @map("investigation_id") @db.VarChar(30)
+  requestedByUserId String   @map("requested_by_user_id") @db.VarChar(30)
+  promptVersion     String   @map("prompt_version") @db.VarChar(64)
+  modelVersion      String   @map("model_version") @db.VarChar(80)
+  evidenceJson      Json     @map("evidence_json")
+  chunkIds          String[] @map("chunk_ids")
+  explanationJson   Json     @map("explanation_json")
+  latencyMs         Int      @map("latency_ms")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, investigationId, createdAt])
+  @@map("ai_explanations")
+}
+
+/// Append-only application audit trail (not admin-tamper-proof).
+model AuditEvent {
+  id          String   @id @default(cuid()) @db.VarChar(30)
+  workspaceId String   @map("workspace_id") @db.VarChar(64)
+  actorUserId String   @map("actor_user_id") @db.VarChar(30)
+  action      String   @db.VarChar(80)
+  entityType  String   @map("entity_type") @db.VarChar(80)
+  entityId    String   @map("entity_id") @db.VarChar(30)
+  beforeJson  Json?    @map("before_json")
+  afterJson   Json?    @map("after_json")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId, entityType, entityId, createdAt])
+  @@map("audit_events")
+}
