@@ -275,7 +275,16 @@ async function main(): Promise<void> {
     });
   }
 
-  const knowledgeChunks = await seedKnowledgeCorpus(prisma);
+  let knowledgeChunks = 0;
+  try {
+    knowledgeChunks = await seedKnowledgeCorpus(prisma);
+  } catch (error: unknown) {
+    // Railway/backend-only deploys omit repo-root docs/; keep core demo seed usable.
+    console.warn(
+      'Knowledge corpus seed skipped (docs missing or unreadable):',
+      error instanceof Error ? error.message : error,
+    );
+  }
   console.log(
     `Seeded workspace, users, memberships, SPEC rows, and ${knowledgeChunks} knowledge chunks.`,
   );
