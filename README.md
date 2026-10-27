@@ -196,7 +196,10 @@ Design and learning guide: [docs/ReconcileOps-Design-and-Learning-Guide.md](docs
 cd frontend
 cp .env.example .env   # VITE_API_URL=http://127.0.0.1:3000
 npm run dev            # http://127.0.0.1:5173
+npm run test:e2e       # Playwright smoke + axe against a local preview build
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs backend tests, frontend lint/test/build, that Playwright smoke, and gitleaks.
 
 Screens: login, overview, payments, CSV import, reconciliation. Light/dark theme toggle in the shell.
 

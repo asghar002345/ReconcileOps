@@ -24,7 +24,7 @@ Audit and polish pass for the Vite + React 19 SPA under `frontend/`. Business lo
 - Type-specific column guidance; success/reuse banners use plain language (no `reused: true` jargon).
 
 ### Local preview proxy
-- `vite.config.ts` proxies `/api-proxy` → Railway for local CORS-free verification. Production builds continue to use `VITE_API_URL`.
+- `vite.config.ts` proxies `/api-proxy` to `API_PROXY_TARGET` (default: the Railway origin the live bundle calls) for local CORS-free verification. Production builds continue to use `VITE_API_URL`.
 
 ## State management (chosen approach)
 
@@ -83,7 +83,7 @@ Mutations are not auto-retried. Async import/reconcile already poll operations u
 **Files:** `frontend/vercel.json`, `frontend/public/robots.txt`, `frontend/index.html`
 
 - SPA rewrite unchanged.
-- Security headers: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, staged CSP (`connect-src` allows Railway `*.up.railway.app` and local API).
+- Security headers: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, CSP `connect-src` limited to exact API origins (observed Railway host, Render blueprint host, local API).
 - `robots.txt` Disallow + `noindex` meta (indexing preference, not access control).
 
 ## Dependencies

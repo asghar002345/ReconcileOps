@@ -55,6 +55,11 @@ export function LoginPage() {
       </section>
 
       <form className="login__form" onSubmit={onSubmit} noValidate>
+        {loading ? (
+          <p className="login__status" role="status">
+            Checking session…
+          </p>
+        ) : null}
         <label htmlFor="login-email">
           Email
           <input
@@ -65,6 +70,7 @@ export function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={loading || submitting}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
           />
@@ -80,6 +86,7 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
+            disabled={loading || submitting}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
           />
@@ -89,7 +96,11 @@ export function LoginPage() {
             {error}
           </p>
         ) : null}
-        <button type="submit" disabled={submitting || loading}>
+        <button
+          type="submit"
+          disabled={submitting || loading}
+          aria-busy={submitting || undefined}
+        >
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="login__hint">

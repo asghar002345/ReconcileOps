@@ -4,6 +4,7 @@ import { ApiError, filsToAed, listPayments } from '../api/client';
 import type { PaymentPage } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { formatUtc } from '../lib/format';
 import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
@@ -20,6 +21,7 @@ export function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function PaymentsPage() {
     return () => {
       controller.abort();
     };
-  }, [token, page]);
+  }, [token, page, reloadKey]);
 
   function goToPage(next: number) {
     setSearchParams(next <= 1 ? {} : { page: String(next) }, { replace: false });
@@ -77,7 +79,20 @@ export function PaymentsPage() {
       {loading && !data ? (
         <StatusBanner tone="info" title="Loading payments…" />
       ) : null}
-      {error ? <StatusBanner tone="danger" title={error} /> : null}
+      {error ? (
+        <StatusBanner tone="danger" title={error}>
+          <div className="button-row">
+            <button
+              type="button"
+              className="action action--ghost"
+              onClick={() => setReloadKey((value) => value + 1)}
+              disabled={loading || refreshing}
+            >
+              Retry
+            </button>
+          </div>
+        </StatusBanner>
+      ) : null}
 
       {!loading && data && data.items.length === 0 ? (
         <StatusBanner tone="info" title="No payments yet">
@@ -122,9 +137,7 @@ export function PaymentsPage() {
                       {filsToAed(item.feeAmountFils)}
                     </td>
                     <td className="num tabular">{filsToAed(net.toString())}</td>
-                    <td className="tabular">
-                      {new Date(item.paidAt).toISOString().replace('.000Z', 'Z')}
-                    </td>
+                    <td className="tabular">{formatUtc(item.paidAt)}</td>
                   </tr>
                 );
               })}

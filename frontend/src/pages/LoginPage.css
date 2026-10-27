@@ -113,7 +113,16 @@
 
 .login__form button:disabled {
   opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login__form button[aria-busy='true']:disabled {
   cursor: wait;
+}
+
+.login__status {
+  margin: 0;
+  color: var(--ink-soft);
 }
 
 .login__error {

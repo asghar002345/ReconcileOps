@@ -4,6 +4,9 @@ import { ApiError, listInvestigations } from '../api/client';
 import type { InvestigationListItem } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { formatDateTime } from '../lib/format';
+import { investigationStatusLabel } from '../lib/investigationStatus';
+import { outcomeTableLabel, outcomeTone } from '../lib/outcomes';
 import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
@@ -45,7 +48,9 @@ export function InvestigationsPage() {
         document review decisions; they never rewrite payment or bank amounts.
       </p>
 
-      {loading ? <StatusBanner tone="info" title="Loading…" /> : null}
+      {loading ? (
+        <StatusBanner tone="info" title="Loading investigations…" />
+      ) : null}
       {error ? (
         <StatusBanner tone="danger" title={error}>
           <button type="button" className="action action--ghost" onClick={() => void load()}>
@@ -81,12 +86,16 @@ export function InvestigationsPage() {
                       {row.referenceNormalized}
                     </Link>
                   </td>
-                  <td>{row.outcome}</td>
-                  <td>{row.status}</td>
-                  <td className="tabular">{row.version}</td>
-                  <td className="tabular">
-                    {new Date(row.updatedAt).toLocaleString()}
+                  <td>
+                    <span
+                      className={`status-pill status-pill--${outcomeTone(row.outcome)}`}
+                    >
+                      {outcomeTableLabel(row.outcome)}
+                    </span>
                   </td>
+                  <td>{investigationStatusLabel(row.status)}</td>
+                  <td className="tabular">{row.version}</td>
+                  <td className="tabular">{formatDateTime(row.updatedAt)}</td>
                 </tr>
               ))}
             </tbody>

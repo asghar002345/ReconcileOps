@@ -6,12 +6,17 @@ import {
   decideProposal,
   explainInvestigation,
   fetchInvestigation,
-  filsToAed,
   proposeResolution,
 } from '../api/client';
 import type { ExplainResult, InvestigationDetail } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { StatusBanner } from '../components/StatusBanner';
+import { formatAed, formatDateTime } from '../lib/format';
+import {
+  investigationStatusLabel,
+  reviewDecisionLabel,
+} from '../lib/investigationStatus';
+import { outcomeLabel } from '../lib/outcomes';
 import { userFacingError } from '../lib/userFacingError';
 import './Pages.css';
 
@@ -176,13 +181,15 @@ export function InvestigationDetailPage() {
               {explaining ? 'Explaining…' : 'Explain discrepancy'}
             </button>
             <p className="page__meta tabular">
-              {detail.status} · v{detail.version}
+              {investigationStatusLabel(detail.status)} · v{detail.version}
             </p>
           </div>
         ) : null}
       </header>
 
-      {loading ? <StatusBanner tone="info" title="Loading…" /> : null}
+      {loading ? (
+        <StatusBanner tone="info" title="Loading investigation…" />
+      ) : null}
       {notFound ? (
         <StatusBanner tone="warning" title="Investigation not found">
           <Link className="action action--ghost" to="/investigations">
@@ -190,20 +197,37 @@ export function InvestigationDetailPage() {
           </Link>
         </StatusBanner>
       ) : null}
-      {error ? <StatusBanner tone="danger" title={error} /> : null}
+      {error ? (
+        <StatusBanner tone="danger" title={error}>
+          {!detail && !notFound ? (
+            <div className="button-row">
+              <button
+                type="button"
+                className="action action--ghost"
+                onClick={() => void load()}
+                disabled={loading || busy}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+        </StatusBanner>
+      ) : null}
 
       {detail ? (
         <>
           <section className="metric-row metric-row--pair">
             <div className="metric">
               <p className="metric__label">Outcome (unchanged)</p>
-              <p className="metric__value">{detail.discrepancy.outcome}</p>
+              <p className="metric__value metric__value--text">
+                {outcomeLabel(detail.discrepancy.outcome)}
+              </p>
             </div>
             <div className="metric">
               <p className="metric__label">Difference</p>
               <p className="metric__value tabular">
                 {detail.discrepancy.differenceFils
-                  ? `${filsToAed(detail.discrepancy.differenceFils)} AED`
+                  ? `${formatAed(detail.discrepancy.differenceFils)} AED`
                   : '—'}
               </p>
             </div>
@@ -255,7 +279,7 @@ export function InvestigationDetailPage() {
                   <li key={item.id}>
                     <p>{item.body}</p>
                     <p className="page__meta tabular">
-                      {new Date(item.createdAt).toLocaleString()}
+                      {formatDateTime(item.createdAt)}
                     </p>
                   </li>
                 ))}
@@ -299,11 +323,12 @@ export function InvestigationDetailPage() {
                 {detail.proposals.map((proposal) => (
                   <li key={proposal.id}>
                     <p>
-                      <strong>{proposal.status}</strong> — {proposal.summary}
+                      <strong>{reviewDecisionLabel(proposal.status)}</strong> —{' '}
+                      {proposal.summary}
                     </p>
                     {proposal.decision ? (
                       <p className="page__meta">
-                        Decision: {proposal.decision.decision}
+                        Decision: {reviewDecisionLabel(proposal.decision.decision)}
                         {proposal.decision.note
                           ? ` — ${proposal.decision.note}`
                           : ''}
@@ -385,7 +410,7 @@ export function InvestigationDetailPage() {
                   <li key={event.id}>
                     <p>{event.action}</p>
                     <p className="page__meta tabular">
-                      {new Date(event.createdAt).toLocaleString()}
+                      {formatDateTime(event.createdAt)}
                     </p>
                   </li>
                 ))}

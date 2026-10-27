@@ -15,23 +15,30 @@
 }
 
 .banner--info {
-  background: var(--bg-elevated);
+  background-color: var(--bg-elevated);
+  color: var(--ink);
 }
 
 .banner--success {
-  background: var(--success-soft);
+  background-color: var(--success-soft);
   border-color: color-mix(in srgb, var(--success) 35%, var(--line));
   color: var(--success);
 }
 
 .banner--danger {
-  background: var(--danger-soft);
+  background-color: var(--danger-soft);
   border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
   color: var(--danger);
 }
 
 .banner--warning {
-  background: var(--warning-soft);
+  background-color: var(--warning-soft);
   border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
   color: var(--warning);
+}
+
+.banner--warning .banner__body,
+.banner--success .banner__body,
+.banner--danger .banner__body {
+  color: inherit;
 }

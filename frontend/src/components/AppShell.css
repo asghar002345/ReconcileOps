@@ -10,8 +10,7 @@
   gap: var(--space-5);
   padding: var(--space-5);
   border-right: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
-  backdrop-filter: blur(10px);
+  background-color: var(--bg-elevated);
 }
 
 .shell__brand-mark {
@@ -58,7 +57,7 @@
 
 .shell__link--active {
   color: var(--ink);
-  background: var(--bg-muted);
+  background-color: var(--bg-muted);
   font-weight: 600;
   box-shadow: inset 3px 0 0 var(--accent);
 }

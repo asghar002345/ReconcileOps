@@ -1,0 +1,11 @@
+title = "ReconcileOps"
+
+[extend]
+useDefault = true
+
+# Historical NestJS starter badge in backend/README.md used ?token=abc123def456.
+# That query value is a public placeholder, not a credential. The current file
+# no longer includes it; this allowlist covers the commit that still does.
+[[allowlists]]
+description = "NestJS starter CircleCI badge placeholder"
+regexes = ['''abc123def456''']

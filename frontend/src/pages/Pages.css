@@ -147,6 +147,12 @@
   overflow-wrap: anywhere;
 }
 
+.metric__value--text {
+  font-size: clamp(1.2rem, 2vw, 1.65rem);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
@@ -195,6 +201,10 @@
 
 .action:disabled {
   opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.action[aria-busy='true']:disabled {
   cursor: wait;
 }
 

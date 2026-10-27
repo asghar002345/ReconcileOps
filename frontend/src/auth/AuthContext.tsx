@@ -28,7 +28,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => readAccessToken());
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Only block the first paint when a stored token still needs /auth/me.
+  const [loading, setLoading] = useState(() => token !== null);
 
   const logout = useCallback(() => {
     clearAccessToken();

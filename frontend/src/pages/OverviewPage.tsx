@@ -22,6 +22,7 @@ export function OverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function OverviewPage() {
     return () => {
       controller.abort();
     };
-  }, [token]);
+  }, [token, reloadKey]);
 
   const openIssues = latestRun
     ? latestRun.summary.AMOUNT_MISMATCH +
@@ -99,7 +100,20 @@ export function OverviewPage() {
       {loading && totalPayments === null ? (
         <StatusBanner tone="info" title="Loading workspace totals…" />
       ) : null}
-      {error ? <StatusBanner tone="danger" title={error} /> : null}
+      {error ? (
+        <StatusBanner tone="danger" title={error}>
+          <div className="button-row">
+            <button
+              type="button"
+              className="action action--ghost"
+              onClick={() => setReloadKey((value) => value + 1)}
+              disabled={loading || refreshing}
+            >
+              Retry
+            </button>
+          </div>
+        </StatusBanner>
+      ) : null}
 
       {showMetrics && !error ? (
         <section className="metric-row" aria-busy={refreshing || undefined}>

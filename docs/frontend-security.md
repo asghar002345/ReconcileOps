@@ -40,7 +40,7 @@ If moving off bearer tokens in JS storage:
 | CORS allowlist | Backend `CORS_ORIGINS` |
 | Captcha / bot challenges | Not added (would need server-side token verify) |
 
-CORS is not authorization. CSP was staged to allow Google Fonts and Railway API hosts; if `VITE_API_URL` changes domain, update `connect-src`.
+CORS is not authorization. `connect-src` allows `'self'`, the exact deployed API origins (`https://reconcileops-production.up.railway.app` and `https://reconcileops-api.onrender.com`), and the local API. If `VITE_API_URL` moves, add that exact origin. Do not use a platform wildcard.
 
 ## Bot and crawler policy
 

@@ -62,7 +62,12 @@ After `render:start` seed runs, use the same demo users as local (see seed / PRO
    - **Output Directory:** `dist`
 4. Environment variable:
    - `VITE_API_URL` = `https://<your-render-api-host>` (no trailing slash)
-5. Deploy. Copy the Vercel URL, e.g. `https://reconcileops.vercel.app`.
+5. Confirm `frontend/vercel.json` `connect-src` includes that **exact** origin. The checked-in policy allows:
+   - `https://reconcileops-production.up.railway.app` — origin baked into the current Vercel bundle
+   - `https://reconcileops-api.onrender.com` — hostname for the `reconcileops-api` blueprint service
+   - `http://127.0.0.1:3000` and `http://localhost:3000` — local API
+   If Render assigns a different hostname, replace the `onrender.com` entry with that origin. Do not widen `connect-src` to `https://*.onrender.com` or `https://*.up.railway.app`.
+6. Deploy. Copy the Vercel URL, e.g. `https://reconcileops.vercel.app`.
 
 `frontend/vercel.json` rewrites SPA routes to `index.html`.
 
@@ -93,6 +98,7 @@ If you prefer the dashboard click-path:
 
 - [ ] `/health` on Render returns ok  
 - [ ] Worker service is running (async import / reconcile complete)  
-- [ ] Vercel build has `VITE_API_URL` pointing at Render  
+- [ ] Vercel build has `VITE_API_URL` pointing at the deployed API  
+- [ ] `connect-src` includes that exact API origin  
 - [ ] `CORS_ORIGINS` includes the Vercel origin  
 - [ ] Login works from the Vercel URL  

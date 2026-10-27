@@ -78,10 +78,12 @@ body {
   font-weight: 400;
   color: var(--ink);
   text-rendering: optimizeLegibility;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(15, 106, 90, 0.14), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(138, 90, 18, 0.1), transparent 50%),
-    var(--bg);
+  /* Fade into --bg, not `transparent`. Axe treats the transparent keyword as a
+     light stop and then reports false contrast failures on dark surfaces. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(15, 106, 90, 0.14), var(--bg) 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(138, 90, 18, 0.1), var(--bg) 50%);
 }
 
 button,
@@ -102,6 +104,11 @@ a {
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+html.theme-switching,
+html.theme-switching * {
+  transition: none !important;
 }
 
 .tabular {

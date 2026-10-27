@@ -214,15 +214,10 @@ export function ReconciliationPage() {
               type="button"
               className={`filter-chip ${filter === 'ALL' ? 'filter-chip--active' : ''}`}
               aria-pressed={filter === 'ALL'}
-              aria-label={`All outcomes, ${run.resultCount}`}
               onClick={() => setFilter('ALL')}
             >
-              <span className="filter-chip__label" aria-hidden="true">
-                All
-              </span>
-              <span className="filter-chip__count tabular" aria-hidden="true">
-                {run.resultCount}
-              </span>
+              <span className="filter-chip__label">All</span>
+              <span className="filter-chip__count tabular">{run.resultCount}</span>
             </button>
             {OUTCOME_ORDER.map((outcome) => {
               const selected = filter === outcome;
@@ -233,19 +228,16 @@ export function ReconciliationPage() {
                   type="button"
                   className={`filter-chip filter-chip--${outcomeTone(outcome)} ${selected ? 'filter-chip--active' : ''}`}
                   aria-pressed={selected}
-                  aria-label={`${outcomeLabel(outcome)}, ${count}`}
                   title={outcomeLabel(outcome)}
                   onClick={() => setFilter(selected ? 'ALL' : outcome)}
                 >
-                  <span className="filter-chip__label" aria-hidden="true">
+                  <span className="filter-chip__label">
                     <span className="filter-chip__full">{outcomeLabel(outcome)}</span>
                     <span className="filter-chip__short">
                       {outcomeShortLabel(outcome)}
                     </span>
                   </span>
-                  <span className="filter-chip__count tabular" aria-hidden="true">
-                    {count}
-                  </span>
+                  <span className="filter-chip__count tabular">{count}</span>
                 </button>
               );
             })}

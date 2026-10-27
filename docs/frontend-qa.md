@@ -65,5 +65,5 @@ npm audit
 
 - Import row-level errors depend on API `errors[]` payload shape.
 - Approver decision UI needs an approver session (not used in this browser pass).
-- Production Vercel must set `VITE_API_URL` to the Railway API (not `/api-proxy`).
+- Production `VITE_API_URL` must be an exact origin listed in `frontend/vercel.json` `connect-src` (not `/api-proxy`, and not a `*.onrender.com` or `*.up.railway.app` wildcard).
 - 200% zoom and VoiceOver full pass not run.
